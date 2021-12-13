@@ -1,0 +1,91 @@
+---
+title: "Disco Bay Weather"
+output: html_document
+---
+
+<style type="text/css">
+h1.title {
+  text-align: center;
+}
+</style>
+
+
+```{r include = FALSE}
+library(tidyverse)
+library(jsonlite)
+library(shiny)
+library(scales)
+library(ggtext)
+library(curl)
+```
+
+```{r include = FALSE}
+Sys.setenv(TZ="America/Los_Angeles")
+
+wind.rose <- function(x) {
+  upper <- seq(from = 11.25, by = 22.5, length.out = 17)
+  card1 <- c('N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N')
+  ifelse(x>360 | x<0,NA,card1[findInterval(x,upper,rightmost.closed = T)+1])
+}
+
+url <- "https://api.openweathermap.org/data/2.5/onecall?lat=47.9936&lon=-122.88248&exclude=minutely&units=imperial&appid=8d5cf85099c375dcad074eff91b0d5d9"
+weather.page <- fromJSON(url, flatten = TRUE)
+hourly.forecast <- data.frame(weather.page$hourly)
+hourly.forecast$dt <- as.POSIXct(hourly.forecast$dt, origin="1970-01-01")
+
+hourly.forecast <- hourly.forecast %>%
+  mutate(wind_speed = wind_speed * 0.868976) %>%
+  mutate(wind_gust = wind_gust * 0.868976)
+
+dir.plot <- ggplot(hourly.forecast, aes(x = dt)) + 
+  geom_point(aes(y = wind.rose(wind_deg)), size = 1) +
+  theme_bw() +
+  labs(title = "**Wind Direction**") +
+  theme(plot.title = element_markdown()) +
+  ylab("") +
+  xlab("") +
+  scale_y_discrete(limits = c('N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N'))
+
+bar.plot <- ggplot(hourly.forecast, aes(x = dt)) + 
+  geom_line(aes(y = pressure), size = 1) +
+  geom_hline(aes(yintercept = 1013.25), linetype = "dashed", color = "gray") +
+  theme_bw() +
+  labs(title = "**Barometric Pressure**") +
+  theme(plot.title = element_markdown()) +
+  ylab("Millibars") +
+  xlab("")  
+
+weather.plot <- ggplot(hourly.forecast, aes(x =dt)) + 
+  geom_line(aes(y = wind_speed), size = 1) +
+  geom_line(aes(y = wind_gust), color = "#FF0000") +
+  theme_bw() +
+  labs(
+    title = "**Wind Speed** and <span style='color:#FF0000;'>**Gust**</span></span>") +
+  theme(plot.title = element_markdown()) +
+  ylab("Knots") +
+  xlab("")
+
+rain.plot <- ggplot(hourly.forecast, aes(x = dt)) +
+  geom_line(aes(y = pop), size = 1) +
+  geom_col(aes(y = rain.1h/5), color = "darkgrey", fill = "#28d0eb") +
+  geom_text(aes(y = rain.1h/5, label = rain.1h), size = 2.5, vjust = -0.5) +
+  theme_bw() +
+  labs(
+    title = "**Chance of Rain** and <span style='color:#28d0eb;'>**Accumulation**</span></span> (mm/hr)") +
+  theme(plot.title = element_markdown()) +
+  ylab("Percent") + 
+  xlab("") +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  coord_cartesian(ylim = c(0,1))
+```
+
+<center><h2> **48 Hour Forecast**</h2></center>
+<center><h3> **Current time: `r Sys.time()`**</h3></center>
+
+
+```{r echo = FALSE, warning = FALSE, fig.align = 'center'}
+weather.plot
+dir.plot
+rain.plot
+bar.plot
+```

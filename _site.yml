@@ -1,0 +1,15 @@
+name: "wx_website"
+navbar:
+  title: "WX Monitor"
+  left:
+    - text: "Disco Bay"
+      href: index.html
+      
+    - text: "PT Ferry"
+      href: pt.html
+      
+    - text: "Ediz Hook"
+      href: ediz.html  
+
+output:
+  html_document

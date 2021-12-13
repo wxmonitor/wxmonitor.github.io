@@ -1,0 +1,133 @@
+---
+title: "Ediz Hook Weather"
+output: html_document
+---
+
+<style type="text/css">
+h1.title {
+  text-align: center;
+}
+</style>
+
+
+```{r include = FALSE}
+library(tidyverse)
+library(shiny)
+library(curl)
+library(jsonlite)
+library(ggtext)
+```
+
+```{r include = FALSE}
+#public.token <- "652e4bd32bbf4621b835895f8c769bb6"
+#private.token <- "KyyWv4LwBcvOCw4HYAl81615e1Io62OwwwfNDz6ny1"
+
+Sys.setenv(TZ="America/Los_Angeles")
+
+wind.rose <- function(x) {
+  upper <- seq(from = 11.25, by = 22.5, length.out = 17)
+  card1 <- c('N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N')
+  ifelse(x>360 | x<0,NA,card1[findInterval(x,upper,rightmost.closed = T)+1])
+}
+
+# Query and clean data
+
+url <- "https://api.synopticdata.com/v2/stations/timeseries?stid=KNOW&obtimezone=local&recent=1440&vars=wind_speed&units=english&token=652e4bd32bbf4621b835895f8c769bb6"
+weather.page <- fromJSON(url, flatten = TRUE)
+weather.table <- data.frame(weather.page[["STATION"]][16][[1]], weather.page[["STATION"]][17][[1]])
+
+url <- "https://api.synopticdata.com/v2/stations/timeseries?stid=KNOW&obtimezone=local&recent=1440&vars=wind_gust&units=english&token=652e4bd32bbf4621b835895f8c769bb6"
+gust.page <- fromJSON(url, flatten = TRUE)
+gust.table <- data.frame(gust.page[["STATION"]][16][[1]], gust.page[["STATION"]][17][[1]])
+
+url <- "https://api.synopticdata.com/v2/stations/timeseries?stid=KNOW&obtimezone=local&recent=1440&vars=wind_direction&units=english&token=652e4bd32bbf4621b835895f8c769bb6"
+dir.page <- fromJSON(url, flatten = TRUE)
+dir.table <- data.frame(dir.page[["STATION"]][16][[1]], dir.page[["STATION"]][17][[1]])
+
+url <- "https://api.synopticdata.com/v2/stations/timeseries?stid=KNOW&obtimezone=local&recent=720&vars=sea_level_pressure&units=english&token=652e4bd32bbf4621b835895f8c769bb6"
+pressure.page <- fromJSON(url, flatten = TRUE)
+pressure.table <- data.frame(pressure.page[["STATION"]][17][[1]], pressure.page[["STATION"]][18][[1]])
+
+names(weather.table) <- c("Time", "Wind_Speed")
+names(dir.table) <- c("Time", "Wind_Direction")
+names(pressure.table) <- c("Time", "Pressure (mb)")
+
+weather.table$Time <- as.POSIXct(weather.table$Time, format = "%Y-%m-%dT%H:%M:%S%z")
+dir.table$Time <- as.POSIXct(dir.table$Time, format = "%Y-%m-%dT%H:%M:%S%z")
+pressure.table$Time <- as.POSIXct(pressure.table$Time, format = "%Y-%m-%dT%H:%M:%S%z")
+
+dir.plot <- ggplot(dir.table, aes(x = Time)) + 
+  geom_point(aes(y = wind.rose(Wind_Direction)), size = 1) +
+  theme_bw() +
+  labs(title = "**Wind Direction**") +
+  theme(plot.title = element_markdown()) +
+  ylab("") +
+  xlab("") +
+  scale_y_discrete(limits = c('N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N'))
+
+bar.plot <- ggplot(pressure.table, aes(x = Time)) + 
+  geom_line(aes(y = `Pressure (mb)`), size = 1) +
+  geom_hline(aes(yintercept = 1013.25), linetype = "dashed", color = "gray") +
+  theme_bw() +
+  labs(title = "**Barometric Pressure**") +
+  theme(plot.title = element_markdown()) +
+  ylab("Millibars") +
+  xlab("")
+
+rose <- ggplot(tail(dir.table, 1), aes(x = Wind_Direction)) +
+  coord_polar(theta = "x", start = 0, direction = 1) +
+  geom_histogram(fill = "red", color = "gray10", bins = 30) +
+  scale_x_continuous(breaks = seq(0, 359, 22.5), limits = c(0, 359), 
+                     labels = c('N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 
+                                'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW')) +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.title = element_blank())
+
+# Catch errors due to missing gust data
+
+a <- try({
+  names(gust.table) <- c("Time", "Wind_Speed")
+  gust.table$Time <- as.POSIXct(gust.table$Time, format = "%Y-%m-%dT%H:%M:%S%z")
+  gust.table$Time <- gust.table$Time
+  
+  weather.plot <- ggplot(NULL, aes(Time, Wind_Speed)) + 
+    geom_line(data = weather.table, color = "black", size = 1) +
+    geom_point(data = gust.table, color = "#FF0000") +
+    theme_bw() +
+    labs(
+      title = "**Wind Speed** and <span style='color:#FF0000;'>**Gust**</span></span>") +
+    theme(plot.title = element_markdown()) +
+    scale_y_continuous(breaks = seq(0, max(na.omit(gust.table$Wind_Speed)),5)) +
+    ylab("Knots") +
+    xlab("")
+})
+
+if (class(a) == "try-error") {
+  
+  weather.plot <- ggplot(weather.table, aes(x = Time)) +
+    geom_line(aes(y = Wind_Speed), size = 1) +
+    theme_bw() +
+    labs(
+      title = "**Wind Speed** and <span style='color:#FF0000;'>**Gust**</span></span>") +
+    theme(plot.title = element_markdown()) +
+    scale_y_continuous(breaks = seq(0, max(weather.table$Wind_Speed),1)) +
+    ylab("Knots") +
+    xlab("")
+}
+```
+
+<center><h3> **Current time: `r Sys.time()`**</h3></center>
+<center><h3> **Last reading: `r tail(weather.table$Time, 1)`**</h3></center>
+<center><h3> **`r paste0(wind.rose(last(na.omit(dir.table$Wind_Direction))), " ",
+          last(na.omit(weather.table$Wind_Speed)), " knots ",
+          "(", last(na.omit(dir.table$Wind_Direction)), "°)") `**</h3></center>
+
+
+```{r echo = FALSE, warning = FALSE, fig.align = 'center'}
+rose
+weather.plot
+bar.plot
+dir.plot
+```
