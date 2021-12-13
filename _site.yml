@@ -13,3 +13,5 @@ navbar:
 
 output:
   html_document
+  
+output_dir: "."
