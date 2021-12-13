@@ -6,10 +6,10 @@ navbar:
       href: index.html
       
     - text: "PT Ferry"
-      href: PT.html
+      href: pt.html
       
     - text: "Ediz Hook"
-      href: Ediz.html  
+      href: ediz.html  
 
 output:
   html_document
